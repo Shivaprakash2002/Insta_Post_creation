@@ -6,9 +6,7 @@ import path from "path";
 const WIDTH = 1080;
 const HEIGHT = 1350;
 
-/** * FIX 1: Use a reliable path and register font with Sharp 
- * Make sure your file is at: /public/fonts/DMSans-Bold.ttf
- */
+
 const fontPath = path.join(process.cwd(), "public", "fonts", "DMSans-Bold.ttf");
 
 async function emojiToBuffer(emoji: string, size: number): Promise<Buffer | null> {
