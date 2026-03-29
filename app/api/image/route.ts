@@ -171,19 +171,31 @@ import path from "path";
 const WIDTH = 1080;
 const HEIGHT = 1350;
 
-// Cached in memory after first read
-let cachedFontB64: string | null = null;
+let cachedTamilFontB64: string | null = null;
+let cachedLatinFontB64: string | null = null;
 
-function getFontBase64(): string {
-  if (cachedFontB64) return cachedFontB64;
-  // @fontsource/noto-sans-tamil is installed in node_modules
-  // This path works both locally and on Vercel
-  const fontPath = path.join(
-    process.cwd(),
-    "node_modules/@fontsource/noto-sans-tamil/files/noto-sans-tamil-tamil-700-normal.woff2"
-  );
-  cachedFontB64 = fs.readFileSync(fontPath).toString("base64");
-  return cachedFontB64;
+function getFonts(): { tamil: string; latin: string } {
+  if (!cachedTamilFontB64) {
+    cachedTamilFontB64 = fs
+      .readFileSync(
+        path.join(
+          process.cwd(),
+          "node_modules/@fontsource/noto-sans-tamil/files/noto-sans-tamil-tamil-700-normal.woff2"
+        )
+      )
+      .toString("base64");
+  }
+  if (!cachedLatinFontB64) {
+    cachedLatinFontB64 = fs
+      .readFileSync(
+        path.join(
+          process.cwd(),
+          "node_modules/@fontsource/noto-sans-tamil/files/noto-sans-tamil-latin-700-normal.woff2"
+        )
+      )
+      .toString("base64");
+  }
+  return { tamil: cachedTamilFontB64, latin: cachedLatinFontB64 };
 }
 
 async function emojiToBuffer(emoji: string, size: number): Promise<Buffer | null> {
@@ -239,26 +251,23 @@ export async function POST(req: NextRequest) {
   try {
     const { hook, caption, image_url, channel_name = "NaatuNadapu" } = await req.json();
 
-    // ── Background + font ────────────────────────────────────────────
     const bgRes = await fetch(image_url);
     if (!bgRes.ok) throw new Error("Failed to fetch background image");
     const bgBuffer = Buffer.from(await bgRes.arrayBuffer());
-    const fontB64 = getFontBase64();
 
-    // ── Sizes & colors ───────────────────────────────────────────────
+    const { tamil: tamilB64, latin: latinB64 } = getFonts();
+
     const hookSize     = 56;
     const captionSize  = 34;
     const footerSize   = 30;
     const purpleTheme  = "#8E24AA";
     const platformBlue = "#0070f3";
 
-    // ── Layout ───────────────────────────────────────────────────────
     const blockTop      = Math.round(HEIGHT * 0.60);
     const dividerY      = Math.round(HEIGHT * 0.725);
     const hookStartY    = Math.round(HEIGHT * 0.665);
     const captionStartY = dividerY + 62;
 
-    // Tamil glyphs render wider — use fewer chars per line
     const hasTamil        = /[\u0B80-\u0BFF]/.test(hook + caption);
     const hookMaxChars    = hasTamil ? 13 : 18;
     const captionMaxChars = hasTamil ? 30 : 42;
@@ -266,25 +275,30 @@ export async function POST(req: NextRequest) {
     const hookLines    = wrapText(stripEmojis(hook).toUpperCase(), hookMaxChars);
     const captionLines = wrapText(stripEmojis(caption), captionMaxChars);
 
-    // ── Emojis ───────────────────────────────────────────────────────
     const [hEmojiBufs, cEmojiBufs, micBuf] = await Promise.all([
       Promise.all(getEmojiData(hook).map((e) => emojiToBuffer(e, hookSize))),
       Promise.all(getEmojiData(caption).map((e) => emojiToBuffer(e, captionSize))),
       emojiToBuffer("🎙️", 65),
     ]);
 
-    // ── Badge ────────────────────────────────────────────────────────
     const followText = `Follow ${channel_name}`;
     const badgeWidth = Math.min(followText.length * 18 + 60, 700);
 
-    // ── SVG ──────────────────────────────────────────────────────────
+    // Two @font-face blocks: Tamil script + Latin script
+    // librsvg picks the right one glyph-by-glyph automatically
     const svgOverlay = `
 <svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <style>
       @font-face {
         font-family: 'AppFont';
-        src: url('data:font/woff2;base64,${fontB64}') format('woff2');
+        src: url('data:font/woff2;base64,${tamilB64}') format('woff2');
+        unicode-range: U+0B80-0BFF;
+      }
+      @font-face {
+        font-family: 'AppFont';
+        src: url('data:font/woff2;base64,${latinB64}') format('woff2');
+        unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
       }
       .hook    { font-family: 'AppFont', sans-serif; font-weight: bold; fill: ${purpleTheme}; }
       .caption { font-family: 'AppFont', sans-serif; font-weight: bold; fill: white; }
@@ -318,7 +332,6 @@ export async function POST(req: NextRequest) {
   >${escapeXml(followText)}</text>
 </svg>`;
 
-    // ── Composites ───────────────────────────────────────────────────
     const composites: sharp.OverlayOptions[] = [
       { input: Buffer.from(svgOverlay), top: 0, left: 0 },
     ];
@@ -350,7 +363,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Render ───────────────────────────────────────────────────────
     const finalImage = await sharp(bgBuffer)
       .resize(WIDTH, Math.round(HEIGHT * 0.6), { fit: "cover" })
       .extend({ bottom: Math.round(HEIGHT * 0.4), background: "black" })
