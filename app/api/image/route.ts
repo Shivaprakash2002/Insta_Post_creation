@@ -165,33 +165,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import twemoji from "twemoji";
+import fs from "fs";
+import path from "path";
 
 const WIDTH = 1080;
 const HEIGHT = 1350;
 
-// Cache font in memory so we only fetch once per cold start
+// Cached in memory after first read
 let cachedFontB64: string | null = null;
 
-async function getFontBase64(): Promise<string> {
+function getFontBase64(): string {
   if (cachedFontB64) return cachedFontB64;
-
-  // 1. Ask Google Fonts CSS API for the actual .ttf URL
-  const cssRes = await fetch(
-    "https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@700&display=swap",
-    { headers: { "User-Agent": "Mozilla/5.0" } } // needed to get ttf instead of woff2
+  // @fontsource/noto-sans-tamil is installed in node_modules
+  // This path works both locally and on Vercel
+  const fontPath = path.join(
+    process.cwd(),
+    "node_modules/@fontsource/noto-sans-tamil/files/noto-sans-tamil-tamil-700-normal.woff2"
   );
-  const css = await cssRes.text();
-
-  // 2. Extract the .ttf / .woff2 URL from the CSS
-  const match = css.match(/src:\s*url\(([^)]+)\)/);
-  if (!match) throw new Error("Could not parse font URL from Google Fonts CSS");
-  const fontUrl = match[1];
-
-  // 3. Download the font binary and convert to base64
-  const fontRes = await fetch(fontUrl);
-  const fontBuffer = await fontRes.arrayBuffer();
-  cachedFontB64 = Buffer.from(fontBuffer).toString("base64");
-
+  cachedFontB64 = fs.readFileSync(fontPath).toString("base64");
   return cachedFontB64;
 }
 
@@ -248,18 +239,16 @@ export async function POST(req: NextRequest) {
   try {
     const { hook, caption, image_url, channel_name = "NaatuNadapu" } = await req.json();
 
-    // ── Fetch background + font in parallel ──────────────────────────
-    const [bgRes, fontB64] = await Promise.all([
-      fetch(image_url),
-      getFontBase64(),
-    ]);
+    // ── Background + font ────────────────────────────────────────────
+    const bgRes = await fetch(image_url);
     if (!bgRes.ok) throw new Error("Failed to fetch background image");
     const bgBuffer = Buffer.from(await bgRes.arrayBuffer());
+    const fontB64 = getFontBase64();
 
     // ── Sizes & colors ───────────────────────────────────────────────
-    const hookSize    = 56;
-    const captionSize = 34;
-    const footerSize  = 30;
+    const hookSize     = 56;
+    const captionSize  = 34;
+    const footerSize   = 30;
     const purpleTheme  = "#8E24AA";
     const platformBlue = "#0070f3";
 
@@ -269,8 +258,8 @@ export async function POST(req: NextRequest) {
     const hookStartY    = Math.round(HEIGHT * 0.665);
     const captionStartY = dividerY + 62;
 
-    // Tamil glyphs render wider — tighten wrap limit
-    const hasTamil = /[\u0B80-\u0BFF]/.test(hook + caption);
+    // Tamil glyphs render wider — use fewer chars per line
+    const hasTamil        = /[\u0B80-\u0BFF]/.test(hook + caption);
     const hookMaxChars    = hasTamil ? 13 : 18;
     const captionMaxChars = hasTamil ? 30 : 42;
 
@@ -295,7 +284,7 @@ export async function POST(req: NextRequest) {
     <style>
       @font-face {
         font-family: 'AppFont';
-        src: url('data:font/truetype;base64,${fontB64}') format('truetype');
+        src: url('data:font/woff2;base64,${fontB64}') format('woff2');
       }
       .hook    { font-family: 'AppFont', sans-serif; font-weight: bold; fill: ${purpleTheme}; }
       .caption { font-family: 'AppFont', sans-serif; font-weight: bold; fill: white; }

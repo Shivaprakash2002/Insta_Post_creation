@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@fontsource/noto-sans-tamil": "^5.2.7",
     "canvas": "^3.2.2",
     "next": "14.2.3",
     "openai": "^4.47.1",
