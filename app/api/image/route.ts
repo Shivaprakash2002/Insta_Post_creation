@@ -100,9 +100,9 @@
 //   }
 // </style>
 //       </defs>
-      
+
 //       <rect x="0" y="${blockTop}" width="${WIDTH}" height="${HEIGHT - blockTop}" fill="black"/>
-      
+
 //       ${hookLines.map((line, i) => `
 //         <text x="${WIDTH / 2}" y="${HEIGHT * 0.675 + (i * hookSize * 1.1)}" text-anchor="middle" class="hook" font-size="${hookSize}">
 //           ${line}
@@ -234,15 +234,15 @@ export async function POST(req: NextRequest) {
     const bgBuffer = Buffer.from(await bgRes.arrayBuffer());
 
     // 🔥 Sizes
-    const hookSize = 75;
-    const captionSize = Math.floor(hookSize * 0.75); // 75% ratio
-    const footerSize = 32;
+    const hookSize = 65;
+    const captionSize = Math.floor(hookSize * 0.75);
+    const footerSize = 28;
 
     const purpleTheme = "#8E24AA";
     const blockTop = HEIGHT * 0.6;
     const dividerY = HEIGHT * 0.74;
 
-    // 🔥 Remove emojis from text (we render separately)
+    // 🔥 Clean text (remove emojis for layout)
     const cleanHook = hook.replace(/\p{Emoji_Presentation}/gu, "");
     const cleanCaption = caption.replace(/\p{Emoji_Presentation}/gu, "");
 
@@ -257,34 +257,29 @@ export async function POST(req: NextRequest) {
     const followText = `Follow ${channel_name}`;
     const badgeWidth = followText.length * 18 + 50;
 
-    // 🔥 SVG (NO CSS → INLINE FONT ONLY)
+    // 🔥 SVG (NO CSS)
     const svg = `
 <svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
 
   <rect x="0" y="${blockTop}" width="${WIDTH}" height="${HEIGHT - blockTop}" fill="black"/>
 
-  ${hookLines
-    .map(
-      (line, i) => `
+  ${hookLines.map((line, i) => `
     <text 
       x="${WIDTH / 2}" 
       y="${HEIGHT * 0.675 + i * (hookSize * 1.1)}" 
       text-anchor="middle"
       font-size="${hookSize}"
-      font-weight="900"
+      font-weight="700"
       fill="${purpleTheme}"
       font-family="Arial Black, Segoe UI, sans-serif"
     >
       ${line}
-    </text>`
-    )
-    .join("")}
+    </text>
+  `).join("")}
 
   <line x1="250" y1="${dividerY}" x2="${WIDTH - 250}" y2="${dividerY}" stroke="white" opacity="0.3"/>
 
-  ${captionLines
-    .map(
-      (line, i) => `
+  ${captionLines.map((line, i) => `
     <text 
       x="${WIDTH / 2}" 
       y="${dividerY + 85 + i * (captionSize * 1.3)}" 
@@ -295,9 +290,8 @@ export async function POST(req: NextRequest) {
       font-family="Segoe UI, Arial, sans-serif"
     >
       ${line}
-    </text>`
-    )
-    .join("")}
+    </text>
+  `).join("")}
 
   <rect x="${(WIDTH - badgeWidth) / 2}" y="${HEIGHT - 105}" width="${badgeWidth}" height="60" rx="30" fill="#0070f3"/>
   
@@ -325,12 +319,13 @@ export async function POST(req: NextRequest) {
     const hookWidth = hookLines[hookLines.length - 1].length * (hookSize * 0.55);
 
     hookEmojis.forEach((buf, i) => {
-      if (buf)
+      if (buf) {
         composites.push({
           input: buf,
-          top: hookY - hookSize,
-          left: WIDTH / 2 + hookWidth / 2 + 20 + i * hookSize
+          top: Math.round(hookY - hookSize),
+          left: Math.round(WIDTH / 2 + hookWidth / 2 + 20 + i * hookSize)
         });
+      }
     });
 
     // 🔥 Caption emoji position
@@ -338,26 +333,27 @@ export async function POST(req: NextRequest) {
     const capWidth = captionLines[captionLines.length - 1].length * (captionSize * 0.5);
 
     captionEmojis.forEach((buf, i) => {
-      if (buf)
+      if (buf) {
         composites.push({
           input: buf,
-          top: capY - captionSize,
-          left: WIDTH / 2 + capWidth / 2 + 20 + i * captionSize
+          top: Math.round(capY - captionSize),
+          left: Math.round(WIDTH / 2 + capWidth / 2 + 20 + i * captionSize)
         });
+      }
     });
 
     // 🔥 Mic emojis
     if (mic) {
       composites.push(
-        { input: mic, top: HEIGHT - 115, left: 80 },
-        { input: mic, top: HEIGHT - 115, left: WIDTH - 150 }
+        { input: mic, top: Math.round(HEIGHT - 115), left: 80 },
+        { input: mic, top: Math.round(HEIGHT - 115), left: Math.round(WIDTH - 150) }
       );
     }
 
     // 🔥 Final image
     const final = await sharp(bgBuffer)
-      .resize(WIDTH, HEIGHT * 0.6, { fit: "cover" })
-      .extend({ bottom: HEIGHT * 0.4, background: "black" })
+      .resize(WIDTH, Math.round(HEIGHT * 0.6), { fit: "cover" })
+      .extend({ bottom: Math.round(HEIGHT * 0.4), background: "black" })
       .composite(composites)
       .png()
       .toBuffer();
