@@ -1,0 +1,99 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --yellow: #FFD100;
+  --orange: #FF6B00;
+  --bg: #0A0A0A;
+  --surface: #111111;
+  --border: #222222;
+  --muted: #555555;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg);
+  color: #fff;
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
+
+/* Shimmer skeleton */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    #1a1a1a 25%,
+    #2a2a2a 50%,
+    #1a1a1a 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Tag pill */
+.tag {
+  display: inline-block;
+  background: rgba(255,209,0,0.1);
+  border: 1px solid rgba(255,209,0,0.25);
+  color: var(--yellow);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.news-item {
+  transition: all 0.18s ease;
+  border: 1px solid var(--border);
+}
+.news-item:hover {
+  border-color: rgba(255,209,0,0.4);
+  background: rgba(255,209,0,0.04);
+}
+.news-item.selected {
+  border-color: var(--yellow);
+  background: rgba(255,209,0,0.07);
+}
+
+/* Glow button */
+.btn-glow {
+  position: relative;
+  overflow: hidden;
+  background: var(--yellow);
+  color: #000;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+.btn-glow:hover {
+  background: #ffe033;
+  box-shadow: 0 0 24px rgba(255,209,0,0.4);
+  transform: translateY(-1px);
+}
+.btn-glow:active {
+  transform: translateY(0);
+}
+.btn-glow:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}

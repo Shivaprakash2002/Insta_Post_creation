@@ -1,0 +1,29 @@
+{
+  "name": "ai-insta-creator",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "canvas": "^3.2.2",
+    "next": "14.2.3",
+    "openai": "^4.47.1",
+    "react": "^18",
+    "react-dom": "^18",
+    "rss-parser": "^3.13.0",
+    "sharp": "^0.33.4",
+    "twemoji": "^14.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.0.1",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  }
+}
