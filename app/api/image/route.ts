@@ -6,8 +6,10 @@ import path from "path";
 const WIDTH = 1080;
 const HEIGHT = 1350;
 
-// Ensure font path is correct for your environment
-const fontPath = path.resolve(process.cwd(), "public/fonts/DMSans-Bold.ttf");
+/** * FIX 1: Use a reliable path and register font with Sharp 
+ * Make sure your file is at: /public/fonts/DMSans-Bold.ttf
+ */
+const fontPath = path.join(process.cwd(), "public", "fonts", "DMSans-Bold.ttf");
 
 async function emojiToBuffer(emoji: string, size: number): Promise<Buffer | null> {
   try {
@@ -28,14 +30,10 @@ function getEmojiData(text: string) {
   return text.match(emojiRegex) || [];
 }
 
-/**
- * Text Wrapping Helper
- */
 function wrapText(text: string, maxChars: number): string[] {
   const words = text.split(" ");
   const lines: string[] = [];
   let currentLine = "";
-
   words.forEach(word => {
     if ((currentLine + word).length > maxChars) {
       lines.push(currentLine.trim());
@@ -55,7 +53,6 @@ export async function POST(req: NextRequest) {
     const bgRes = await fetch(image_url);
     const bgBuffer = Buffer.from(await bgRes.arrayBuffer());
 
-    // ─── LAYOUT SETTINGS (Change these to adjust spacing) ───────────────
     const baseSize = 75; 
     const hookSize = baseSize;         
     const captionSize = baseSize * 0.65; 
@@ -65,50 +62,49 @@ export async function POST(req: NextRequest) {
     const purpleTheme = "#8E24AA";
     const blockTop = HEIGHT * 0.6;
     
-    // ADJUST THIS: Lower value moves divider UP, higher moves it DOWN
-    const dividerY = HEIGHT * 0.745; 
-
-    // ──────────────────────────────────────────────────────────────────
+    // FIX 2: Better divider spacing
+    const dividerY = HEIGHT * 0.74; 
 
     const hookLines = wrapText(hook.replace(/\p{Emoji_Presentation}/gu, "").toUpperCase(), 15);
     const captionLines = wrapText(caption.replace(/\p{Emoji_Presentation}/gu, ""), 38);
     
-    const hookEmojis = getEmojiData(hook);
-    const captionEmojis = getEmojiData(caption);
-
-    const hEmojiBufs = await Promise.all(hookEmojis.map(e => emojiToBuffer(e, hookSize)));
-    const cEmojiBufs = await Promise.all(captionEmojis.map(e => emojiToBuffer(e, captionSize)));
+    const hEmojiBufs = await Promise.all(getEmojiData(hook).map(e => emojiToBuffer(e, hookSize)));
+    const cEmojiBufs = await Promise.all(getEmojiData(caption).map(e => emojiToBuffer(e, captionSize)));
     const micBuf = await emojiToBuffer("🎙️", 75);
 
     const followText = `Follow ${channel_name}`;
     const badgeWidth = followText.length * 18 + 50; 
 
+    /**
+     * FIX 3: Remove the 'file://' prefix in some environments it causes issues.
+     * Also ensured font-family matches the internal metadata of DM Sans.
+     */
     const svgOverlay = `
     <svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <style>
           @font-face {
-            font-family: 'DMSans';
-            src: url('file://${fontPath}');
+            font-family: 'DM Sans';
+            src: url('${fontPath}');
           }
-          .hook { font-family: 'DMSans', sans-serif; font-weight: 800; fill: ${purpleTheme}; }
-          .caption { font-family: 'DMSans', sans-serif; font-weight: 600; fill: white; }
-          .footer { font-family: 'DMSans', sans-serif; font-weight: 700; fill: white; }
+          .hook { font-family: 'DM Sans', sans-serif; font-weight: 800; fill: ${purpleTheme}; }
+          .caption { font-family: 'DM Sans', sans-serif; font-weight: 600; fill: white; }
+          .footer { font-family: 'DM Sans', sans-serif; font-weight: 700; fill: white; }
         </style>
       </defs>
       
       <rect x="0" y="${blockTop}" width="${WIDTH}" height="${HEIGHT - blockTop}" fill="black"/>
       
       ${hookLines.map((line, i) => `
-        <text x="${WIDTH / 2}" y="${HEIGHT * 0.68 + (i * hookSize * 1.1)}" text-anchor="middle" class="hook" font-size="${hookSize}">
+        <text x="${WIDTH / 2}" y="${HEIGHT * 0.675 + (i * hookSize * 1.1)}" text-anchor="middle" class="hook" font-size="${hookSize}">
           ${line}
         </text>
       `).join("")}
 
-      <line x1="220" y1="${dividerY}" x2="${WIDTH - 220}" y2="${dividerY}" stroke="white" stroke-width="1.5" opacity="0.25"/>
+      <line x1="250" y1="${dividerY}" x2="${WIDTH - 250}" y2="${dividerY}" stroke="white" stroke-width="1.2" opacity="0.3"/>
 
       ${captionLines.map((line, i) => `
-        <text x="${WIDTH / 2}" y="${dividerY + 75 + (i * captionSize * 1.3)}" text-anchor="middle" class="caption" font-size="${captionSize}">
+        <text x="${WIDTH / 2}" y="${dividerY + 85 + (i * captionSize * 1.3)}" text-anchor="middle" class="caption" font-size="${captionSize}">
           ${line}
         </text>
       `).join("")}
@@ -121,24 +117,24 @@ export async function POST(req: NextRequest) {
 
     const composites: sharp.OverlayOptions[] = [{ input: Buffer.from(svgOverlay), top: 0, left: 0 }];
 
-    // Emoji Logic (Last Line Attachment)
-    const hookLineY = HEIGHT * 0.68 + ((hookLines.length - 1) * hookSize * 1.1);
+    // Emoji positioning logic
+    const hookLineY = HEIGHT * 0.675 + ((hookLines.length - 1) * hookSize * 1.1);
     const hookWidth = hookLines[hookLines.length - 1].length * (hookSize * 0.58);
     hEmojiBufs.forEach((buf, i) => {
       if (buf) composites.push({
         input: buf,
         top: Math.round(hookLineY - (hookSize * 0.9)),
-        left: Math.round((WIDTH / 2) + (hookWidth / 2) + 15 + (i * (hookSize + 5)))
+        left: Math.round((WIDTH / 2) + (hookWidth / 2) + 20 + (i * (hookSize + 5)))
       });
     });
 
-    const capLineY = dividerY + 75 + ((captionLines.length - 1) * captionSize * 1.3);
+    const capLineY = dividerY + 85 + ((captionLines.length - 1) * captionSize * 1.3);
     const capWidth = captionLines[captionLines.length - 1].length * (captionSize * 0.52);
     cEmojiBufs.forEach((buf, i) => {
       if (buf) composites.push({
         input: buf,
         top: Math.round(capLineY - (captionSize * 0.9)),
-        left: Math.round((WIDTH / 2) + (capWidth / 2) + 15 + (i * (captionSize + 5)))
+        left: Math.round((WIDTH / 2) + (capWidth / 2) + 20 + (i * (captionSize + 5)))
       });
     });
 
@@ -159,6 +155,7 @@ export async function POST(req: NextRequest) {
     return new NextResponse(finalImage, { headers: { "Content-Type": "image/png" } });
 
   } catch (error) {
+    console.error("Image generation failed:", error);
     return NextResponse.json({ error: "Failed" }, { status: 500 });
   }
 }
