@@ -165,26 +165,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import twemoji from "twemoji";
-import path from "path";
-import fs from "fs";
 
 const WIDTH = 1080;
 const HEIGHT = 1350;
 
-// ✅ FIX 1: Read font as base64 for Vercel compatibility
-// Vercel serves static files from /public, but serverless functions
-// need to read files using fs with an absolute path anchored to the
-// project root via process.cwd(). We embed it as base64 in the SVG
-// so the font works in Vercel's sandboxed environment.
-function getFontBase64(): string | null {
-  try {
-    const fontPath = path.join(process.cwd(), "public", "fonts", "DMSans-Bold.ttf");
-    const fontBuffer = fs.readFileSync(fontPath);
-    return fontBuffer.toString("base64");
-  } catch (err) {
-    console.error("Font load failed:", err);
-    return null;
-  }
+// Cache font in memory so we only fetch once per cold start
+let cachedFontB64: string | null = null;
+
+async function getFontBase64(): Promise<string> {
+  if (cachedFontB64) return cachedFontB64;
+
+  // 1. Ask Google Fonts CSS API for the actual .ttf URL
+  const cssRes = await fetch(
+    "https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@700&display=swap",
+    { headers: { "User-Agent": "Mozilla/5.0" } } // needed to get ttf instead of woff2
+  );
+  const css = await cssRes.text();
+
+  // 2. Extract the .ttf / .woff2 URL from the CSS
+  const match = css.match(/src:\s*url\(([^)]+)\)/);
+  if (!match) throw new Error("Could not parse font URL from Google Fonts CSS");
+  const fontUrl = match[1];
+
+  // 3. Download the font binary and convert to base64
+  const fontRes = await fetch(fontUrl);
+  const fontBuffer = await fontRes.arrayBuffer();
+  cachedFontB64 = Buffer.from(fontBuffer).toString("base64");
+
+  return cachedFontB64;
 }
 
 async function emojiToBuffer(emoji: string, size: number): Promise<Buffer | null> {
@@ -198,182 +206,162 @@ async function emojiToBuffer(emoji: string, size: number): Promise<Buffer | null
     const svgText = await res.text();
     const sizedSvg = svgText.replace("<svg ", `<svg width="${size}" height="${size}" `);
     return await sharp(Buffer.from(sizedSvg)).png().toBuffer();
-  } catch (err) {
+  } catch {
     return null;
   }
 }
 
-function getEmojiData(text: string) {
-  const emojiRegex = /\p{Emoji_Presentation}/gu;
-  return text.match(emojiRegex) || [];
+function getEmojiData(text: string): string[] {
+  return text.match(/\p{Emoji_Presentation}/gu) || [];
+}
+
+function stripEmojis(text: string): string {
+  return text.replace(/\p{Emoji_Presentation}/gu, "").trim();
+}
+
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 function wrapText(text: string, maxChars: number): string[] {
   const words = text.split(" ");
   const lines: string[] = [];
-  let currentLine = "";
-
-  words.forEach((word) => {
-    if ((currentLine + word).length > maxChars) {
-      lines.push(currentLine.trim());
-      currentLine = word + " ";
+  let current = "";
+  for (const word of words) {
+    if ((current + word).length > maxChars) {
+      if (current.trim()) lines.push(current.trim());
+      current = word + " ";
     } else {
-      currentLine += word + " ";
+      current += word + " ";
     }
-  });
-  lines.push(currentLine.trim());
-  return lines.filter((l) => l.length > 0);
+  }
+  if (current.trim()) lines.push(current.trim());
+  return lines;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const { hook, caption, image_url, channel_name = "NaatuNadapu" } = await req.json();
 
-    const bgRes = await fetch(image_url);
+    // ── Fetch background + font in parallel ──────────────────────────
+    const [bgRes, fontB64] = await Promise.all([
+      fetch(image_url),
+      getFontBase64(),
+    ]);
+    if (!bgRes.ok) throw new Error("Failed to fetch background image");
     const bgBuffer = Buffer.from(await bgRes.arrayBuffer());
 
-    // ✅ FIX 2: Reduced font sizes to prevent overflow
-    const baseSize = 58;            // was 75 — reduced ~23%
-    const hookSize = baseSize;
-    const captionSize = baseSize * 0.60; // ~35px — slightly tighter ratio
-    const footerSize = 30;
-
-    const purpleTheme = "#8E24AA";
+    // ── Sizes & colors ───────────────────────────────────────────────
+    const hookSize    = 56;
+    const captionSize = 34;
+    const footerSize  = 30;
+    const purpleTheme  = "#8E24AA";
     const platformBlue = "#0070f3";
-    const blockTop = HEIGHT * 0.6;
 
-    // ✅ FIX 3: Recalculated divider so caption fits above the badge
-    const dividerY = HEIGHT * 0.73;
+    // ── Layout ───────────────────────────────────────────────────────
+    const blockTop      = Math.round(HEIGHT * 0.60);
+    const dividerY      = Math.round(HEIGHT * 0.725);
+    const hookStartY    = Math.round(HEIGHT * 0.665);
+    const captionStartY = dividerY + 62;
 
-    // Wrap text (strip emojis first for accurate char count)
-    const hookLines = wrapText(hook.replace(/\p{Emoji_Presentation}/gu, "").toUpperCase(), 18);
-    const captionLines = wrapText(caption.replace(/\p{Emoji_Presentation}/gu, ""), 42);
+    // Tamil glyphs render wider — tighten wrap limit
+    const hasTamil = /[\u0B80-\u0BFF]/.test(hook + caption);
+    const hookMaxChars    = hasTamil ? 13 : 18;
+    const captionMaxChars = hasTamil ? 30 : 42;
 
-    const hookEmojis = getEmojiData(hook);
-    const captionEmojis = getEmojiData(caption);
+    const hookLines    = wrapText(stripEmojis(hook).toUpperCase(), hookMaxChars);
+    const captionLines = wrapText(stripEmojis(caption), captionMaxChars);
 
-    const hEmojiBufs = await Promise.all(hookEmojis.map((e) => emojiToBuffer(e, hookSize)));
-    const cEmojiBufs = await Promise.all(captionEmojis.map((e) => emojiToBuffer(e, captionSize)));
-    const micBuf = await emojiToBuffer("🎙️", 65);
+    // ── Emojis ───────────────────────────────────────────────────────
+    const [hEmojiBufs, cEmojiBufs, micBuf] = await Promise.all([
+      Promise.all(getEmojiData(hook).map((e) => emojiToBuffer(e, hookSize))),
+      Promise.all(getEmojiData(caption).map((e) => emojiToBuffer(e, captionSize))),
+      emojiToBuffer("🎙️", 65),
+    ]);
 
+    // ── Badge ────────────────────────────────────────────────────────
     const followText = `Follow ${channel_name}`;
-    const badgeWidth = followText.length * 17 + 50;
+    const badgeWidth = Math.min(followText.length * 18 + 60, 700);
 
-    // ✅ FIX 1 (continued): Embed font as base64 data URI in SVG
-    const fontBase64 = getFontBase64();
-    const fontFaceRule = fontBase64
-      ? `@font-face {
-            font-family: 'DMSans';
-            src: url('data:font/truetype;base64,${fontBase64}') format('truetype');
-          }`
-      : `@font-face {
-            font-family: 'DMSans';
-            src: local('Arial Black'), local('Impact');
-          }`;
-
+    // ── SVG ──────────────────────────────────────────────────────────
     const svgOverlay = `
-    <svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <style>
-          ${fontFaceRule}
-          .hook    { font-family: 'DMSans', 'Arial Black', sans-serif; font-weight: 800; fill: ${purpleTheme}; }
-          .caption { font-family: 'DMSans', 'Arial Black', sans-serif; font-weight: 600; fill: white; }
-          .footer  { font-family: 'DMSans', 'Arial Black', sans-serif; font-weight: 700; fill: white; }
-        </style>
-      </defs>
+<svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      @font-face {
+        font-family: 'AppFont';
+        src: url('data:font/truetype;base64,${fontB64}') format('truetype');
+      }
+      .hook    { font-family: 'AppFont', sans-serif; font-weight: bold; fill: ${purpleTheme}; }
+      .caption { font-family: 'AppFont', sans-serif; font-weight: bold; fill: white; }
+      .footer  { font-family: 'AppFont', sans-serif; font-weight: bold; fill: white; }
+    </style>
+  </defs>
 
-      <!-- Dark block -->
-      <rect x="0" y="${blockTop}" width="${WIDTH}" height="${HEIGHT - blockTop}" fill="black"/>
+  <rect x="0" y="${blockTop}" width="${WIDTH}" height="${HEIGHT - blockTop}" fill="black"/>
 
-      <!-- Hook lines -->
-      ${hookLines
-        .map(
-          (line, i) => `
-        <text
-          x="${WIDTH / 2}"
-          y="${HEIGHT * 0.665 + i * hookSize * 1.15}"
-          text-anchor="middle"
-          class="hook"
-          font-size="${hookSize}"
-        >${line}</text>`
-        )
-        .join("")}
+  ${hookLines.map((line, i) => `
+  <text
+    x="${WIDTH / 2}"
+    y="${hookStartY + i * Math.round(hookSize * 1.2)}"
+    text-anchor="middle" class="hook" font-size="${hookSize}"
+  >${escapeXml(line)}</text>`).join("")}
 
-      <!-- Divider -->
-      <line
-        x1="200" y1="${dividerY}"
-        x2="${WIDTH - 200}" y2="${dividerY}"
-        stroke="white" stroke-width="1.5" opacity="0.25"
-      />
+  <line x1="180" y1="${dividerY}" x2="${WIDTH - 180}" y2="${dividerY}"
+        stroke="white" stroke-width="1.5" opacity="0.3"/>
 
-      <!-- Caption lines -->
-      ${captionLines
-        .map(
-          (line, i) => `
-        <text
-          x="${WIDTH / 2}"
-          y="${dividerY + 60 + i * captionSize * 1.35}"
-          text-anchor="middle"
-          class="caption"
-          font-size="${captionSize}"
-        >${line}</text>`
-        )
-        .join("")}
+  ${captionLines.map((line, i) => `
+  <text
+    x="${WIDTH / 2}"
+    y="${captionStartY + i * Math.round(captionSize * 1.4)}"
+    text-anchor="middle" class="caption" font-size="${captionSize}"
+  >${escapeXml(line)}</text>`).join("")}
 
-      <!-- Follow badge -->
-      <rect
-        x="${(WIDTH - badgeWidth) / 2}"
-        y="${HEIGHT - 100}"
-        width="${badgeWidth}"
-        height="58"
-        rx="29"
-        fill="${platformBlue}"
-      />
-      <text
-        x="${WIDTH / 2}"
-        y="${HEIGHT - 62}"
-        text-anchor="middle"
-        class="footer"
-        font-size="${footerSize}"
-      >${followText}</text>
-    </svg>`;
+  <rect x="${(WIDTH - badgeWidth) / 2}" y="${HEIGHT - 100}"
+        width="${badgeWidth}" height="58" rx="29" fill="${platformBlue}"/>
+  <text x="${WIDTH / 2}" y="${HEIGHT - 61}"
+        text-anchor="middle" class="footer" font-size="${footerSize}"
+  >${escapeXml(followText)}</text>
+</svg>`;
 
+    // ── Composites ───────────────────────────────────────────────────
     const composites: sharp.OverlayOptions[] = [
       { input: Buffer.from(svgOverlay), top: 0, left: 0 },
     ];
 
-    // Hook emojis — attach to end of last hook line
-    const hookLineY = HEIGHT * 0.665 + (hookLines.length - 1) * hookSize * 1.15;
-    const hookWidth = hookLines[hookLines.length - 1].length * (hookSize * 0.56);
+    const lastHookY = hookStartY + (hookLines.length - 1) * Math.round(hookSize * 1.2);
+    const lastHookW = hookLines[hookLines.length - 1].length * (hookSize * 0.55);
     hEmojiBufs.forEach((buf, i) => {
-      if (buf)
-        composites.push({
-          input: buf,
-          top: Math.round(hookLineY - hookSize * 0.88),
-          left: Math.round(WIDTH / 2 + hookWidth / 2 + 12 + i * (hookSize + 5)),
-        });
+      if (buf) composites.push({
+        input: buf,
+        top: Math.round(lastHookY - hookSize * 0.88),
+        left: Math.round(WIDTH / 2 + lastHookW / 2 + 10 + i * (hookSize + 5)),
+      });
     });
 
-    // Caption emojis — attach to end of last caption line
-    const capLineY = dividerY + 60 + (captionLines.length - 1) * captionSize * 1.35;
-    const capWidth = captionLines[captionLines.length - 1].length * (captionSize * 0.5);
+    const lastCapY = captionStartY + (captionLines.length - 1) * Math.round(captionSize * 1.4);
+    const lastCapW = captionLines[captionLines.length - 1].length * (captionSize * 0.5);
     cEmojiBufs.forEach((buf, i) => {
-      if (buf)
-        composites.push({
-          input: buf,
-          top: Math.round(capLineY - captionSize * 0.88),
-          left: Math.round(WIDTH / 2 + capWidth / 2 + 12 + i * (captionSize + 5)),
-        });
+      if (buf) composites.push({
+        input: buf,
+        top: Math.round(lastCapY - captionSize * 0.88),
+        left: Math.round(WIDTH / 2 + lastCapW / 2 + 10 + i * (captionSize + 5)),
+      });
     });
 
-    // Mic icons on either side of badge
     if (micBuf) {
       composites.push(
-        { input: micBuf, top: HEIGHT - 110, left: 85 },
-        { input: micBuf, top: HEIGHT - 110, left: WIDTH - 150 }
+        { input: micBuf, top: HEIGHT - 110, left: 80 },
+        { input: micBuf, top: HEIGHT - 110, left: WIDTH - 145 }
       );
     }
 
+    // ── Render ───────────────────────────────────────────────────────
     const finalImage = await sharp(bgBuffer)
       .resize(WIDTH, Math.round(HEIGHT * 0.6), { fit: "cover" })
       .extend({ bottom: Math.round(HEIGHT * 0.4), background: "black" })
@@ -384,8 +372,12 @@ export async function POST(req: NextRequest) {
     return new NextResponse(finalImage, {
       headers: { "Content-Type": "image/png" },
     });
+
   } catch (error) {
     console.error("Image generation error:", error);
-    return NextResponse.json({ error: "Failed to generate image" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to generate image", detail: String(error) },
+      { status: 500 }
+    );
   }
 }
