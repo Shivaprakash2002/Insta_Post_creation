@@ -51,27 +51,27 @@ export async function POST(req: NextRequest) {
     const bgRes = await fetch(image_url);
     const bgBuffer = Buffer.from(await bgRes.arrayBuffer());
 
-    const baseSize = 75; 
-    const hookSize = baseSize;         
-    const captionSize = baseSize * 0.65; 
-    const footerSize = 32; 
+    const baseSize = 75;
+    const hookSize = baseSize;
+    const captionSize = baseSize * 0.65;
+    const footerSize = 32;
 
-    const platformBlue = "#0070f3"; 
+    const platformBlue = "#0070f3";
     const purpleTheme = "#8E24AA";
     const blockTop = HEIGHT * 0.6;
-    
+
     // FIX 2: Better divider spacing
-    const dividerY = HEIGHT * 0.74; 
+    const dividerY = HEIGHT * 0.74;
 
     const hookLines = wrapText(hook.replace(/\p{Emoji_Presentation}/gu, "").toUpperCase(), 15);
     const captionLines = wrapText(caption.replace(/\p{Emoji_Presentation}/gu, ""), 38);
-    
+
     const hEmojiBufs = await Promise.all(getEmojiData(hook).map(e => emojiToBuffer(e, hookSize)));
     const cEmojiBufs = await Promise.all(getEmojiData(caption).map(e => emojiToBuffer(e, captionSize)));
     const micBuf = await emojiToBuffer("🎙️", 75);
 
     const followText = `Follow ${channel_name}`;
-    const badgeWidth = followText.length * 18 + 50; 
+    const badgeWidth = followText.length * 18 + 50;
 
     /**
      * FIX 3: Remove the 'file://' prefix in some environments it causes issues.
@@ -81,14 +81,24 @@ export async function POST(req: NextRequest) {
     <svg width="${WIDTH}" height="${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <style>
-          @font-face {
-            font-family: 'DM Sans';
-            src: url('${fontPath}');
-          }
-          .hook { font-family: 'DM Sans', sans-serif; font-weight: 800; fill: ${purpleTheme}; }
-          .caption { font-family: 'DM Sans', sans-serif; font-weight: 600; fill: white; }
-          .footer { font-family: 'DM Sans', sans-serif; font-weight: 700; fill: white; }
-        </style>
+  .hook { 
+    font-family: 'Arial Black', 'Segoe UI', 'Helvetica Neue', sans-serif;
+    font-weight: 900; 
+    fill: ${purpleTheme}; 
+  }
+
+  .caption { 
+    font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
+    font-weight: 600; 
+    fill: white; 
+  }
+
+  .footer { 
+    font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
+    font-weight: 700; 
+    fill: white; 
+  }
+</style>
       </defs>
       
       <rect x="0" y="${blockTop}" width="${WIDTH}" height="${HEIGHT - blockTop}" fill="black"/>
