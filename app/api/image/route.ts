@@ -61,13 +61,13 @@
 //     const platformBlue = "#0070f3"; 
 //     const purpleTheme = "#8E24AA";
 //     const blockTop = HEIGHT * 0.6;
-    
+
 //     // FIX 2: Better divider spacing
 //     const dividerY = HEIGHT * 0.74; 
 
 //     const hookLines = wrapText(hook.replace(/\p{Emoji_Presentation}/gu, "").toUpperCase(), 15);
 //     const captionLines = wrapText(caption.replace(/\p{Emoji_Presentation}/gu, ""), 38);
-    
+
 //     const hEmojiBufs = await Promise.all(getEmojiData(hook).map(e => emojiToBuffer(e, hookSize)));
 //     const cEmojiBufs = await Promise.all(getEmojiData(caption).map(e => emojiToBuffer(e, captionSize)));
 //     const micBuf = await emojiToBuffer("🎙️", 75);
@@ -92,9 +92,9 @@
 //           .footer { font-family: 'DM Sans', sans-serif; font-weight: 700; fill: white; }
 //         </style>
 //       </defs>
-      
+
 //       <rect x="0" y="${blockTop}" width="${WIDTH}" height="${HEIGHT - blockTop}" fill="black"/>
-      
+
 //       ${hookLines.map((line, i) => `
 //         <text x="${WIDTH / 2}" y="${HEIGHT * 0.675 + (i * hookSize * 1.1)}" text-anchor="middle" class="hook" font-size="${hookSize}">
 //           ${line}
@@ -177,22 +177,12 @@ let cachedLatinFontB64: string | null = null;
 function getFonts(): { tamil: string; latin: string } {
   if (!cachedTamilFontB64) {
     cachedTamilFontB64 = fs
-      .readFileSync(
-        path.join(
-          process.cwd(),
-          "node_modules/@fontsource/noto-sans-tamil/files/noto-sans-tamil-tamil-700-normal.woff2"
-        )
-      )
+      .readFileSync(path.join(process.cwd(), "public/fonts/noto-sans-tamil-tamil-700-normal.woff2"))
       .toString("base64");
   }
   if (!cachedLatinFontB64) {
     cachedLatinFontB64 = fs
-      .readFileSync(
-        path.join(
-          process.cwd(),
-          "node_modules/@fontsource/noto-sans-tamil/files/noto-sans-tamil-latin-700-normal.woff2"
-        )
-      )
+      .readFileSync(path.join(process.cwd(), "public/fonts/noto-sans-tamil-latin-700-normal.woff2"))
       .toString("base64");
   }
   return { tamil: cachedTamilFontB64, latin: cachedLatinFontB64 };
@@ -257,22 +247,22 @@ export async function POST(req: NextRequest) {
 
     const { tamil: tamilB64, latin: latinB64 } = getFonts();
 
-    const hookSize     = 56;
-    const captionSize  = 34;
-    const footerSize   = 30;
-    const purpleTheme  = "#8E24AA";
+    const hookSize = 56;
+    const captionSize = 34;
+    const footerSize = 30;
+    const purpleTheme = "#8E24AA";
     const platformBlue = "#0070f3";
 
-    const blockTop      = Math.round(HEIGHT * 0.60);
-    const dividerY      = Math.round(HEIGHT * 0.725);
-    const hookStartY    = Math.round(HEIGHT * 0.665);
+    const blockTop = Math.round(HEIGHT * 0.60);
+    const dividerY = Math.round(HEIGHT * 0.725);
+    const hookStartY = Math.round(HEIGHT * 0.665);
     const captionStartY = dividerY + 62;
 
-    const hasTamil        = /[\u0B80-\u0BFF]/.test(hook + caption);
-    const hookMaxChars    = hasTamil ? 13 : 18;
+    const hasTamil = /[\u0B80-\u0BFF]/.test(hook + caption);
+    const hookMaxChars = hasTamil ? 13 : 18;
     const captionMaxChars = hasTamil ? 30 : 42;
 
-    const hookLines    = wrapText(stripEmojis(hook).toUpperCase(), hookMaxChars);
+    const hookLines = wrapText(stripEmojis(hook).toUpperCase(), hookMaxChars);
     const captionLines = wrapText(stripEmojis(caption), captionMaxChars);
 
     const [hEmojiBufs, cEmojiBufs, micBuf] = await Promise.all([
