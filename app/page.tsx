@@ -613,13 +613,13 @@ async function generateCanvasImage(
   ctx.fill();
 
   // ── 5. Caption text ───────────────────────────────────────────────
-  const capSize    = 38;
+  const capSize    = 44;
   ctx.font         = `700 ${capSize}px 'DMSans', 'NotoTamil', sans-serif`;
   ctx.fillStyle    = "rgba(255,255,255,0.80)";
   ctx.textAlign    = "center";
   ctx.textBaseline = "top";
 
-  const capStartY  = hookEndY + 44;
+  const capStartY  = hookEndY + 70;  // was 44 — more breathing room
   const capLineH   = capSize * 1.45;
   const capLines   = wrapText(ctx, caption, POST_W - 120);
 
